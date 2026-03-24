@@ -37,6 +37,8 @@ def _build_prompt(listing: dict, criteria: list[dict], user: dict) -> str:
     pet_required = user.get("pet_required", False)
     listing_type = user.get("listing_type", "for_rent")
     is_rental = listing_type == "for_rent"
+    display_name = user.get("display_name") or user.get("email", "").split("@")[0].title() or "the user"
+    vibe_text = user.get("vibe_text", "")
 
     amenities = listing.get("amenities") or []
     amenities_str = ", ".join(amenities) if amenities else "N/A"
@@ -56,10 +58,12 @@ def _build_prompt(listing: dict, criteria: list[dict], user: dict) -> str:
 {mode_context}
 
 ## User Profile
+- Name: {display_name}
 - City preference: {user_city}
 - Max {"rent" if is_rental else "price"}: {max_rent}
 - Pet type: {pet_type}
 - Pet required: {pet_required}
+- In their own words: {vibe_text if vibe_text else "(no vibe set)"}
 
 ## Scoring Criteria (each has an id, name, weight, and description)
 {criteria_block}
@@ -95,7 +99,7 @@ Return ONLY valid JSON in this exact format:
       "reasoning": "<brief explanation>"
     }}
   }},
-  "overall_summary": "<2-3 sentence summary of the listing's suitability>",
+  "overall_summary": "<2-3 sentence summary written directly to {display_name} by name, referencing specific things they care about from their vibe and criteria. Be personal and specific, not generic.>",
   "red_flags": ["<flag1>", "<flag2>"],
   "highlights": ["<highlight1>", "<highlight2>"]
 }}
