@@ -6,15 +6,15 @@ import os
 from datetime import date
 from typing import Optional
 
-RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY", "")
 RAPIDAPI_HOST = "zillow-scraper-api.p.rapidapi.com"
 BASE_URL = f"https://{RAPIDAPI_HOST}"
 
-HEADERS = {
-    "x-rapidapi-host": RAPIDAPI_HOST,
-    "x-rapidapi-key": RAPIDAPI_KEY,
-    "Content-Type": "application/json",
-}
+def _headers() -> dict:
+    return {
+        "x-rapidapi-host": RAPIDAPI_HOST,
+        "x-rapidapi-key": os.environ.get("RAPIDAPI_KEY", ""),
+        "Content-Type": "application/json",
+    }
 
 
 async def search_rentals(location: str, max_price: int = None, beds_min: int = 1, listing_type: str = "for_rent", pages: int = 3) -> list[dict]:
@@ -34,7 +34,7 @@ async def search_rentals(location: str, max_price: int = None, beds_min: int = 1
 
             try:
                 print(f"[Eden Zillow] Searching {location} — page {page}")
-                resp = await client.get(f"{BASE_URL}/zillow/search", headers=HEADERS, params=params)
+                resp = await client.get(f"{BASE_URL}/zillow/search", headers=_headers(), params=params)
                 resp.raise_for_status()
                 data = resp.json()
 
@@ -74,7 +74,7 @@ async def get_property_details(zpid: str) -> Optional[dict]:
         try:
             resp = await client.get(
                 f"{BASE_URL}/zillow/property",
-                headers=HEADERS,
+                headers=_headers(),
                 params={"zpid": zpid},
             )
             resp.raise_for_status()
@@ -169,17 +169,21 @@ def normalize_listing(raw: dict, detail: Optional[dict] = None) -> Optional[dict
         if not address and data.get("address"):
             address = str(data["address"])
 
-        # Images
+        # Images — capture all possible image fields
         images = []
-        if data.get("imgSrc"):
-            images.append(data["imgSrc"])
+        for img_field in ["image_url", "imgSrc", "img_src", "thumbnail"]:
+            val = data.get(img_field)
+            if val and isinstance(val, str):
+                images.append(val)
         if data.get("photos"):
             for p in data["photos"]:
                 if isinstance(p, dict):
-                    images.append(p.get("url") or p.get("mixedSources", {}).get("jpeg", [{}])[0].get("url", ""))
+                    url = p.get("url") or p.get("mixedSources", {}).get("jpeg", [{}])[0].get("url", "")
+                    if url:
+                        images.append(url)
                 elif isinstance(p, str):
                     images.append(p)
-        images = [i for i in images if i]
+        images = list(dict.fromkeys(i for i in images if i))  # dedupe, preserve order
 
         # Amenities
         amenities = []
@@ -220,7 +224,7 @@ def normalize_listing(raw: dict, detail: Optional[dict] = None) -> Optional[dict
             parking = "available"
 
         # URL
-        detail_url = data.get("detailUrl") or data.get("url") or ""
+        detail_url = data.get("detail_url") or data.get("detailUrl") or data.get("url") or ""
         if detail_url and not detail_url.startswith("http"):
             detail_url = f"https://www.zillow.com{detail_url}"
 
