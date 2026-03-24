@@ -27,6 +27,7 @@ def _build_household_prompt(
         listing_type = user.get("listing_type", "for_rent")
         is_rental = listing_type == "for_rent"
 
+        vibe_text = user.get("vibe_text", "")
         criteria_lines = "\n".join([
             f"  - {c['name']} (weight {c['weight']:.0%}): {c.get('description', '')}"
             for c in criteria
@@ -36,6 +37,7 @@ def _build_household_prompt(
             f"- Looking to: {'rent' if is_rental else 'buy'}\n"
             f"- Max {'rent' if is_rental else 'price'}: {user.get('max_rent') or 'no cap'}\n"
             f"- Pet required: {user.get('pet_required', False)}\n"
+            f"- In their own words: {vibe_text if vibe_text else '(no vibe set)'}\n"
             f"- Criteria:\n{criteria_lines}"
         )
 
@@ -68,6 +70,7 @@ Score this listing for EACH household member against their individual criteria (
 Then write a household narrative in the voice of a brilliant personal real estate advisor who knows both people.
 The narrative should:
 - Call each person by name
+- Reference their vibe text to make commentary personal and specific (e.g. if someone mentions loving gardens, call that out)
 - Note who this listing naturally appeals to more on the surface
 - Surface specific details that will win over the person who might not immediately love it
 - Flag any dealbreakers for either person
