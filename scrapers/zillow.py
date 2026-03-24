@@ -17,7 +17,7 @@ HEADERS = {
 }
 
 
-async def search_rentals(location: str, max_price: int = None, beds_min: int = 1, pages: int = 3) -> list[dict]:
+async def search_rentals(location: str, max_price: int = None, beds_min: int = 1, listing_type: str = "for_rent", pages: int = 3) -> list[dict]:
     """Search Zillow for rental listings in a given location."""
     listings = []
 
@@ -25,7 +25,7 @@ async def search_rentals(location: str, max_price: int = None, beds_min: int = 1
         for page in range(1, pages + 1):
             params = {
                 "location": location,
-                "listing_type": "for_rent",
+                "listing_type": listing_type,
                 "beds_min": str(beds_min),
                 "page": str(page),
             }
@@ -88,6 +88,15 @@ async def get_property_details(zpid: str) -> Optional[dict]:
 def normalize_listing(raw: dict, detail: Optional[dict] = None) -> Optional[dict]:
     """Normalize a Zillow search result + optional detail into our schema."""
     try:
+        # Skip listings with no price
+        if not raw.get("price"):
+            return None
+
+        # Skip non-rental home types
+        home_type = str(raw.get("home_type") or raw.get("homeType") or "").upper()
+        if any(t in home_type for t in ["LAND", "LOT", "MANUFACTURED"]):
+            return None
+
         # zpid is the unique identifier
         zpid = str(raw.get("zpid") or raw.get("id") or "")
         # If zpid looks like coordinates, hash address instead for stable dedup
@@ -266,12 +275,14 @@ async def scrape_for_user(user: dict) -> list[dict]:
         # Use label from bounds as location if available
         location = bounds.get("label", location)
 
-    print(f"[Eden Zillow] Scraping for user {user.get('email')} — {location}, max ${max_rent}, {min_bedrooms}+ beds")
+    listing_type = user.get("listing_type") or "for_rent"
+    print(f"[Eden Zillow] Scraping for user {user.get('email')} — {location}, {listing_type}, max ${max_rent}, {min_bedrooms}+ beds")
 
     raw_listings = await search_rentals(
         location=location,
         max_price=max_rent,
         beds_min=min_bedrooms,
+        listing_type=listing_type,
         pages=3,
     )
 

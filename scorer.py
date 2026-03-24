@@ -31,19 +31,33 @@ def _build_prompt(listing: dict, criteria: list[dict], user: dict) -> str:
         )
     criteria_block = "\n".join(criteria_lines) if criteria_lines else "  (none)"
 
-    user_city = user.get("city", "N/A")
+    user_city = user.get("target_city") or user.get("city", "N/A")
     max_rent = user.get("max_rent", "N/A")
     pet_type = user.get("pet_type", "N/A")
     pet_required = user.get("pet_required", False)
+    listing_type = user.get("listing_type", "for_rent")
+    is_rental = listing_type == "for_rent"
 
     amenities = listing.get("amenities") or []
     amenities_str = ", ".join(amenities) if amenities else "N/A"
 
-    prompt = f"""You are a rental listing evaluator. Score the following listing against a user's criteria.
+    mode_context = (
+        "The user is looking to RENT. Score lease flexibility, pet policy, and monthly affordability highly."
+        if is_rental else
+        "The user is looking to BUY. Focus on long-term value, location appreciation, home quality, and ownership costs. Ignore lease flexibility criteria."
+    )
+
+    price_label = "Rent" if is_rental else "Price"
+    price_value = listing.get("rent", "N/A")
+
+    prompt = f"""You are a property listing evaluator for Eden. Score the following listing against a user's criteria.
+
+## Mode
+{mode_context}
 
 ## User Profile
 - City preference: {user_city}
-- Max rent: {max_rent}
+- Max {"rent" if is_rental else "price"}: {max_rent}
 - Pet type: {pet_type}
 - Pet required: {pet_required}
 
@@ -53,7 +67,7 @@ def _build_prompt(listing: dict, criteria: list[dict], user: dict) -> str:
 ## Listing Details
 - Title: {listing.get('title', 'N/A')}
 - URL: {listing.get('url', 'N/A')}
-- Rent: ${listing.get('rent', 'N/A')}
+- {price_label}: ${price_value}
 - Bedrooms: {listing.get('bedrooms', 'N/A')}
 - Bathrooms: {listing.get('bathrooms', 'N/A')}
 - Sqft: {listing.get('sqft', 'N/A')}
