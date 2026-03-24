@@ -5,11 +5,15 @@ from datetime import datetime
 
 from db import (
     get_active_users,
+    get_active_households,
+    get_household_unscored_listings,
     get_unscored_listings,
     get_user_criteria,
     save_score,
+    save_household_score,
     upsert_listings,
 )
+from household_scorer import score_listing_for_household
 from scorer import score_listing
 from scrapers.zillow import scrape_for_user
 
@@ -97,12 +101,61 @@ async def run() -> None:
 
             await asyncio.sleep(_SCORE_RATE_LIMIT_DELAY)
 
+    # ------------------------------------------------------------------
+    # Phase 2: Household scoring
+    # ------------------------------------------------------------------
+    households = get_active_households()
+    print(f"\n[Eden] Active households: {len(households)}")
+
+    total_household_scored = 0
+
+    for household in households:
+        household_id = household["id"]
+        household_name = household.get("name", household_id)
+        raw_members = household.get("household_members", [])
+
+        if len(raw_members) < 2:
+            print(f"[Eden] Skipping household '{household_name}' — needs ≥2 members.")
+            continue
+
+        # Build members list with user profile + criteria
+        members = []
+        for m in raw_members:
+            uid = m["user_id"]
+            user_profile = next((u for u in users if u["id"] == uid), None)
+            if not user_profile:
+                continue
+            criteria = get_user_criteria(uid)
+            if criteria:
+                members.append({"user": user_profile, "criteria": criteria})
+
+        if len(members) < 2:
+            print(f"[Eden] Skipping household '{household_name}' — not enough members with criteria.")
+            continue
+
+        unscored = get_household_unscored_listings(household_id)
+        print(f"[Eden] Household '{household_name}': {len(unscored)} unscored listings.")
+
+        for listing in unscored:
+            listing_id = listing.get("id", "<unknown>")
+            try:
+                result = await score_listing_for_household(listing, household_id, members)
+                if result:
+                    save_household_score(result)
+                    total_household_scored += 1
+                    print(f"[Eden]   Household scored {listing_id}: {result['household_score']:.1f}/10 (compromise: {result['compromise_rating']:.1f})")
+            except Exception as exc:
+                print(f"[Eden]   Household scoring failed for {listing_id}: {exc}")
+
+            await asyncio.sleep(_SCORE_RATE_LIMIT_DELAY)
+
     print(
         f"\n[Eden Scraper] Run complete at {datetime.now()}\n"
-        f"  Listings scraped : {total_scraped}\n"
-        f"  New listings     : {total_new}\n"
-        f"  Listings scored  : {total_scored}\n"
-        f"  Listings skipped : {total_skipped}\n"
+        f"  Listings scraped       : {total_scraped}\n"
+        f"  New listings           : {total_new}\n"
+        f"  Individual scores      : {total_scored}\n"
+        f"  Listings skipped       : {total_skipped}\n"
+        f"  Household scores       : {total_household_scored}\n"
     )
 
 

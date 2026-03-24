@@ -146,3 +146,63 @@ def save_score(score: dict) -> None:
         ).execute()
     except Exception as exc:
         print(f"[Eden DB] Error saving score: {exc}")
+
+
+def get_active_households() -> list[dict]:
+    """Return all households with their members and each member's profile."""
+    client = get_client()
+    try:
+        resp = client.table("households").select(
+            "id, name, household_members(user_id, role)"
+        ).execute()
+        return resp.data or []
+    except Exception as exc:
+        print(f"[Eden DB] Error fetching households: {exc}")
+        return []
+
+
+def get_household_unscored_listings(household_id: str) -> list[dict]:
+    """Return listings not yet scored for this household."""
+    client = get_client()
+    try:
+        scored_resp = (
+            client.table("scores")
+            .select("listing_id")
+            .eq("household_id", household_id)
+            .execute()
+        )
+        scored_ids = {row["listing_id"] for row in (scored_resp.data or [])}
+
+        listings_resp = (
+            client.table("listings")
+            .select("*")
+            .eq("is_active", True)
+            .execute()
+        )
+        all_listings = listings_resp.data or []
+        return [l for l in all_listings if l["id"] not in scored_ids]
+    except Exception as exc:
+        print(f"[Eden DB] Error fetching unscored listings for household {household_id}: {exc}")
+        return []
+
+
+def save_household_score(score: dict) -> None:
+    """Save a household score to the scores table."""
+    client = get_client()
+    try:
+        # Save one score row per member + one for the household
+        for user_id, member_data in score.get("member_scores", {}).items():
+            row = {
+                "user_id": user_id,
+                "listing_id": score["listing_id"],
+                "household_id": score["household_id"],
+                "overall_score": member_data.get("overall_score", 5.0),
+                "criteria_scores": member_data.get("criteria_scores", {}),
+                "above_threshold": member_data.get("overall_score", 0) >= 5.0,
+                "claude_reasoning": score.get("household_narrative", ""),
+                "red_flags": member_data.get("red_flags", []),
+                "highlights": member_data.get("highlights", []),
+            }
+            client.table("scores").upsert(row, on_conflict="user_id,listing_id").execute()
+    except Exception as exc:
+        print(f"[Eden DB] Error saving household score: {exc}")
