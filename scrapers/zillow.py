@@ -88,8 +88,8 @@ async def get_property_details(zpid: str) -> Optional[dict]:
 def normalize_listing(raw: dict, detail: Optional[dict] = None) -> Optional[dict]:
     """Normalize a Zillow search result + optional detail into our schema."""
     try:
-        # Skip listings with no price
-        if not raw.get("price"):
+        # Skip listings with no price AND no image (likely empty/invalid results)
+        if not raw.get("price") and not raw.get("image_url"):
             return None
 
         # Skip non-rental home types
