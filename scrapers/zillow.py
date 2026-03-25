@@ -299,6 +299,25 @@ def _clean_location(label: str) -> str:
     return label
 
 
+def _in_bounds(listing: dict, bounds: dict) -> bool:
+    """Return True if the listing's coordinates fall inside the user's map bounding box.
+
+    If the listing has no coordinates, we let it through (fail open) so a lack
+    of lat/lng data never silently drops a real result.
+    """
+    lat = listing.get("lat")
+    lng = listing.get("lng")
+    if lat is None or lng is None:
+        return True  # no coords → can't verify, keep it
+    try:
+        return (
+            float(bounds["sw_lat"]) <= float(lat) <= float(bounds["ne_lat"])
+            and float(bounds["sw_lng"]) <= float(lng) <= float(bounds["ne_lng"])
+        )
+    except (KeyError, TypeError, ValueError):
+        return True  # malformed bounds → keep listing
+
+
 async def scrape_for_user(user: dict) -> list[dict]:
     """Scrape Zillow tailored to a specific user's preferences."""
     raw_city = user.get("target_city") or "San Francisco, CA"
@@ -330,12 +349,29 @@ async def scrape_for_user(user: dict) -> list[dict]:
 
     # Normalize without fetching details (zpid from this API is lat/lng, not real zpid)
     normalized = []
+    out_of_area = 0
     for raw in raw_listings[:40]:
         if not isinstance(raw, dict):
             continue
         listing = normalize_listing(raw, None)
-        if listing:
-            normalized.append(listing)
+        if not listing:
+            continue
 
+        # Geo-fence: discard listings outside the user's drawn map bounds.
+        # This prevents the Zillow API from returning off-target national results.
+        if bounds and isinstance(bounds, dict):
+            if not _in_bounds(listing, bounds):
+                out_of_area += 1
+                print(
+                    f"[Eden Zillow] Skipping out-of-area listing: "
+                    f"{listing.get('city', '?')} "
+                    f"(lat={listing.get('lat')}, lng={listing.get('lng')})"
+                )
+                continue
+
+        normalized.append(listing)
+
+    if out_of_area:
+        print(f"[Eden Zillow] Dropped {out_of_area} out-of-area listings for {location}")
     print(f"[Eden Zillow] Normalized {len(normalized)} listings for {location}")
     return normalized
