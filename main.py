@@ -13,6 +13,7 @@ from db import (
     save_score,
     save_household_score,
     upsert_listings,
+    update_scrape_progress,
 )
 from household_scorer import score_listing_for_household
 from scorer import score_listing
@@ -54,6 +55,7 @@ async def run() -> None:
         # ------------------------------------------------------------------
         # Step 1: Scrape Zillow tailored to this user's preferences
         # ------------------------------------------------------------------
+        update_scrape_progress(user_id, status="scraping")
         try:
             raw_listings = await scrape_for_user(user)
             total_scraped += len(raw_listings)
@@ -64,6 +66,7 @@ async def run() -> None:
         # ------------------------------------------------------------------
         # Step 2: Upsert listings to DB
         # ------------------------------------------------------------------
+        found_count = len(raw_listings)
         if raw_listings:
             try:
                 new_listings = upsert_listings(raw_listings)
@@ -78,11 +81,14 @@ async def run() -> None:
         criteria = get_user_criteria(user_id)
         if not criteria:
             print(f"[Eden] Skipping scoring for {user_name} — no criteria defined.")
+            mark_scrape_done(user_id, new_scores=0, found=found_count)
             continue
 
         unscored = get_unscored_listings(user_id)
         print(f"[Eden] User {user_name}: {len(unscored)} unscored listings to evaluate.")
+        update_scrape_progress(user_id, status="scoring", found=found_count, scored=0, total=len(unscored))
 
+        user_scored = 0
         for listing in unscored:
             listing_id = listing.get("id", "<unknown>")
 
@@ -95,14 +101,20 @@ async def run() -> None:
                 score = await score_listing(listing, criteria, user)
                 save_score(score)
                 total_scored += 1
+                user_scored += 1
                 print(f"[Eden]   Scored listing {listing_id} for {user_name}: {score['overall_score']:.1f}/10")
+                update_scrape_progress(
+                    user_id, status="scoring",
+                    found=found_count, scored=user_scored,
+                    total=len(unscored), new_scores=user_scored,
+                )
             except Exception as exc:
                 print(f"[Eden]   Failed to score listing {listing_id} for {user_name}: {exc}")
                 continue
 
             await asyncio.sleep(_SCORE_RATE_LIMIT_DELAY)
 
-        mark_scrape_done(user_id)
+        mark_scrape_done(user_id, new_scores=user_scored, found=found_count)
 
     # ------------------------------------------------------------------
     # Phase 2: Household scoring

@@ -202,13 +202,44 @@ def get_users_with_pending_requests() -> list[dict]:
         return []
 
 
-def mark_scrape_done(user_id: str) -> None:
-    """Clear the scrape request flag and set last_scraped_at for a user."""
+def update_scrape_progress(
+    user_id: str,
+    status: str,
+    found: int = 0,
+    scored: int = 0,
+    total: int = 0,
+    new_scores: int = 0,
+) -> None:
+    """Write live scrape progress to the user's profile row."""
+    client = get_client()
+    try:
+        client.table("profiles").update({
+            "scrape_status": status,
+            "scrape_progress": {
+                "found": found,
+                "scored": scored,
+                "total": total,
+                "new_scores": new_scores,
+            },
+        }).eq("id", user_id).execute()
+    except Exception as exc:
+        print(f"[Eden DB] Error updating scrape progress for {user_id}: {exc}")
+
+
+def mark_scrape_done(user_id: str, new_scores: int = 0, found: int = 0) -> None:
+    """Clear the scrape request flag, set last_scraped_at, and record final counts."""
     client = get_client()
     from datetime import datetime, timezone
     try:
         client.table("profiles").update({
             "scrape_requested_at": None,
+            "scrape_status": None,
+            "scrape_progress": {
+                "found": found,
+                "scored": new_scores,
+                "total": found,
+                "new_scores": new_scores,
+            },
             "last_scraped_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", user_id).execute()
     except Exception as exc:
