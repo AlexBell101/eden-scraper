@@ -9,6 +9,7 @@ from db import (
     get_household_unscored_listings,
     get_unscored_listings,
     get_user_criteria,
+    mark_scrape_done,
     save_score,
     save_household_score,
     upsert_listings,
@@ -100,6 +101,8 @@ async def run() -> None:
                 continue
 
             await asyncio.sleep(_SCORE_RATE_LIMIT_DELAY)
+
+        mark_scrape_done(user_id)
 
     # ------------------------------------------------------------------
     # Phase 2: Household scoring

@@ -186,6 +186,35 @@ def get_household_unscored_listings(household_id: str) -> list[dict]:
         return []
 
 
+def get_users_with_pending_requests() -> list[dict]:
+    """Return users who have requested a scrape but haven't been scraped since."""
+    client = get_client()
+    try:
+        resp = (
+            client.table("profiles")
+            .select("*")
+            .not_.is_("scrape_requested_at", "null")
+            .execute()
+        )
+        return resp.data or []
+    except Exception as exc:
+        print(f"[Eden DB] Error fetching pending scrape requests: {exc}")
+        return []
+
+
+def mark_scrape_done(user_id: str) -> None:
+    """Clear the scrape request flag and set last_scraped_at for a user."""
+    client = get_client()
+    from datetime import datetime, timezone
+    try:
+        client.table("profiles").update({
+            "scrape_requested_at": None,
+            "last_scraped_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", user_id).execute()
+    except Exception as exc:
+        print(f"[Eden DB] Error marking scrape done for {user_id}: {exc}")
+
+
 def save_household_score(score: dict) -> None:
     """Save a household score to the scores table."""
     client = get_client()
