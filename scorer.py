@@ -201,7 +201,7 @@ async def score_listing(
         overall_summary = _FALLBACK_REASONING
         overall_score = _FALLBACK_SCORE
 
-    threshold = float(user.get("threshold", 7.0))
+    threshold = float(user.get("score_threshold") or user.get("threshold") or 7.0)
 
     return {
         "user_id": user_id,
