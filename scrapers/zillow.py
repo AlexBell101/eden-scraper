@@ -267,20 +267,54 @@ def normalize_listing(raw: dict, detail: Optional[dict] = None) -> Optional[dict
         return None
 
 
+def _clean_location(label: str) -> str:
+    """
+    Trim a verbose Mapbox geocoding label down to something Zillow accepts.
+    e.g. "South Bay, Los Angeles, California, United States"
+         → "South Bay, CA"
+    """
+    # Strip country
+    label = label.replace(", United States", "").strip()
+    parts = [p.strip() for p in label.split(",")]
+    if len(parts) >= 2:
+        # Abbreviate the last part (state) if it's a full state name
+        state_abbrevs = {
+            "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR",
+            "California": "CA", "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE",
+            "Florida": "FL", "Georgia": "GA", "Hawaii": "HI", "Idaho": "ID",
+            "Illinois": "IL", "Indiana": "IN", "Iowa": "IA", "Kansas": "KS",
+            "Kentucky": "KY", "Louisiana": "LA", "Maine": "ME", "Maryland": "MD",
+            "Massachusetts": "MA", "Michigan": "MI", "Minnesota": "MN", "Mississippi": "MS",
+            "Missouri": "MO", "Montana": "MT", "Nebraska": "NE", "Nevada": "NV",
+            "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM", "New York": "NY",
+            "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK",
+            "Oregon": "OR", "Pennsylvania": "PA", "Rhode Island": "RI", "South Carolina": "SC",
+            "South Dakota": "SD", "Tennessee": "TN", "Texas": "TX", "Utah": "UT",
+            "Vermont": "VT", "Virginia": "VA", "Washington": "WA", "West Virginia": "WV",
+            "Wisconsin": "WI", "Wyoming": "WY",
+        }
+        state = parts[-1].strip()
+        abbrev = state_abbrevs.get(state, state)
+        return f"{parts[0]}, {abbrev}"
+    return label
+
+
 async def scrape_for_user(user: dict) -> list[dict]:
     """Scrape Zillow tailored to a specific user's preferences."""
-    location = user.get("target_city") or "San Francisco, CA"
+    raw_city = user.get("target_city") or "San Francisco, CA"
+    location = _clean_location(raw_city)  # normalise even manually-typed cities
     max_rent = user.get("max_rent")
     min_bedrooms = user.get("min_bedrooms") or 1
 
-    # If user has search_bounds, use center point city
+    # If user has search_bounds, prefer its label (it has state context from Mapbox)
     bounds = user.get("search_bounds")
     if bounds and isinstance(bounds, dict):
-        # Use label from bounds as location if available
-        location = bounds.get("label", location)
+        raw_label = bounds.get("label", "")
+        if raw_label:
+            location = _clean_location(raw_label)
 
     listing_type = user.get("listing_type") or "for_rent"
-    print(f"[Eden Zillow] Scraping for user {user.get('email')} — {location}, {listing_type}, max ${max_rent}, {min_bedrooms}+ beds")
+    print(f"[Eden Zillow] Scraping for user {user.get('email')} — '{location}', {listing_type}, max ${max_rent}, {min_bedrooms}+ beds")
 
     raw_listings = await search_rentals(
         location=location,

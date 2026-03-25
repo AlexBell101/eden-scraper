@@ -17,6 +17,8 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY", "")
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
@@ -91,6 +93,7 @@ async def health():
         "last_run": _last_run.isoformat() if _last_run else None,
         "last_trigger": _last_trigger,
         "schedule_hours": SCHEDULE_HOURS,
+        "rapidapi_key_set": bool(RAPIDAPI_KEY),
     }
 
 
