@@ -60,6 +60,10 @@ async def search_by_coordinates(
         "west": str(west),
         "status": status,
         "beds_min": str(beds_min),
+        "page_size": "40",
+        "result_type": "list",
+        "sort": "relevance",
+        "zoom": "13",
     }
     if max_price:
         params["price_max"] = str(max_price)
@@ -90,6 +94,8 @@ async def search_by_location(
         "location": location,
         "status": status,
         "beds_min": str(beds_min),
+        "page_size": "40",
+        "result_type": "list",
         "sort": "newest",
     }
     if max_price:
